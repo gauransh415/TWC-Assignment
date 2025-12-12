@@ -9,6 +9,7 @@ from src.models.organization import (
 )
 from src.services.organization_service import OrganizationService
 from src.utils.validators import Validators
+from src.middleware.auth_middleware import get_current_admin
 
 router = APIRouter(prefix="/org", tags=["Organizations"])
 
@@ -110,13 +111,17 @@ def get_organization(organization_name: str):
 
 
 @router.put("/update", response_model=OrganizationResponse)
-def update_organization(request: UpdateOrganizationRequest):
+def update_organization(
+    request: UpdateOrganizationRequest,
+    current_admin: dict = Depends(get_current_admin)
+):
     """
     Update organization name and/or admin credentials.
-    Note: This endpoint will be protected by auth middleware later.
+    Requires authentication.
 
     Args:
         request: Organization update request
+        current_admin: Authenticated admin from JWT token
 
     Returns:
         Updated organization details
@@ -146,9 +151,19 @@ def update_organization(request: UpdateOrganizationRequest):
                     status_code=status.HTTP_400_BAD_REQUEST, detail=error_msg
                 )
 
-        # Update organization (using same name as old for now, will fix with auth)
+        # Get current organization name from admin's organization
+        current_org = OrganizationService.get_organization_by_id(
+            current_admin["organization_id"]
+        )
+        if not current_org:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Current organization not found",
+            )
+
+        # Update organization
         org = OrganizationService.update_organization(
-            request.organization_name,
+            current_org["organization_name"],
             request.organization_name,
             request.email,
             request.password,
@@ -172,41 +187,28 @@ def update_organization(request: UpdateOrganizationRequest):
 
 
 @router.delete("/delete", status_code=status.HTTP_200_OK)
-def delete_organization(request: DeleteOrganizationRequest):
+def delete_organization(
+    request: DeleteOrganizationRequest,
+    current_admin: dict = Depends(get_current_admin)
+):
     """
     Delete an organization.
-    Note: This endpoint will be protected by auth middleware later.
+    Requires authentication. Only the organization's admin can delete it.
 
     Args:
         request: Organization deletion request
+        current_admin: Authenticated admin from JWT token
 
     Returns:
         Success message
 
     Raises:
-        HTTPException: If deletion fails
+        HTTPException: If deletion fails or not authorized
     """
     try:
-        # For now, we'll add a placeholder admin_id
-        # This will be replaced with actual authenticated admin_id later
-        # TODO: Replace with authenticated admin ID from JWT token
-        org = OrganizationService.get_organization(request.organization_name)
-        if not org:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Organization not found",
-            )
-
-        admin_id = org.get("admin_id")
-        if not admin_id:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Organization admin not found",
-            )
-
-        # Delete organization
+        # Delete organization using authenticated admin ID
         success = OrganizationService.delete_organization(
-            request.organization_name, admin_id
+            request.organization_name, current_admin["_id"]
         )
 
         if success:
