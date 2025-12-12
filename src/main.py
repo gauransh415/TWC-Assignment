@@ -1,11 +1,15 @@
 from fastapi import FastAPI
 from src.config.database import DatabaseConfig
+from src.routes.organization_routes import router as organization_router
 
 app = FastAPI(
     title="Organization Management Service",
     description="Multi-tenant organization management system",
     version="1.0.0",
 )
+
+# Include routers
+app.include_router(organization_router)
 
 
 @app.on_event("startup")
